@@ -3,8 +3,8 @@ services:
     name: facef-rfid-access
     runtime: node
     plan: free
-    buildCommand: cd backend && npm install && cd ../frontend && npm install && npm run build
-    startCommand: cd backend && node server.js
+    buildCommand: npm install --prefix backend && npm install --include=dev --prefix frontend && npm run build --prefix frontend
+    startCommand: node backend/server.js
     envVars:
       - key: NODE_ENV
         value: production
@@ -12,5 +12,3 @@ services:
         generateValue: true
       - key: DEVICE_API_KEY
         generateValue: true
-      - key: CORS_ORIGIN
-        sync: false

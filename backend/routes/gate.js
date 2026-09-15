@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../database');
-const { autenticar } = require('./middleware');
+const { autenticar, autenticarPortaria } = require('./middleware');
 
 // === ESTADO DA CANCELA ===
 let statusCancela = {
@@ -11,7 +11,8 @@ let statusCancela = {
   modoDefinitivo: false,
   timerAtivo: false,
   tempoRestante: 0,
-  sensorCarro: false
+  sensorCarro: false,
+  operador: null
 };
 
 // Configuracoes do timer
@@ -19,13 +20,9 @@ const TEMPORIZADOR_SEGUNDOS = 10;
 let timerCancela = null;
 let tempoInicioTimer = null;
 
-// PIN da portaria (para operacao sem login)
-const PIN_PORTARIA = '1234';
-
 // === FUNCOES AUXILIARES ===
 
 function iniciarTimer() {
-  // Limpar timer anterior se existir
   if (timerCancela) {
     clearInterval(timerCancela);
   }
@@ -41,12 +38,10 @@ function iniciarTimer() {
     statusCancela.tempoRestante = Math.max(0, TEMPORIZADOR_SEGUNDOS - elapsed);
 
     if (statusCancela.tempoRestante <= 0) {
-      // Tempo esgotado - fechar cancela
       clearInterval(timerCancela);
       timerCancela = null;
       statusCancela.timerAtivo = false;
 
-      // So fechar se nao estiver no modo definitivo
       if (!statusCancela.modoDefinitivo && statusCancela.aberta) {
         statusCancela.aberta = false;
         statusCancela.motivo = 'Timer expirado';
@@ -79,7 +74,7 @@ function resetarTimer() {
   }
 }
 
-// === ROTAS DO DASHBOARD (com autenticacao) ===
+// === ROTAS DO DASHBOARD (com autenticacao admin) ===
 
 // Abrir cancela manualmente (pelo dashboard)
 router.post('/abrir', autenticar, (req, res) => {
@@ -89,8 +84,8 @@ router.post('/abrir', autenticar, (req, res) => {
   statusCancela.ultimaOperacao = new Date().toISOString();
   statusCancela.motivo = motivo || 'Manual';
   statusCancela.modoDefinitivo = false;
+  statusCancela.operador = req.usuario?.nome || 'Admin';
 
-  // Iniciar timer
   iniciarTimer();
 
   db.run(
@@ -114,6 +109,7 @@ router.post('/fechar', autenticar, (req, res) => {
   statusCancela.ultimaOperacao = new Date().toISOString();
   statusCancela.motivo = 'Fechamento manual';
   statusCancela.modoDefinitivo = false;
+  statusCancela.operador = req.usuario?.nome || 'Admin';
 
   pararTimer();
 
@@ -135,46 +131,31 @@ router.get('/status', autenticar, (req, res) => {
   res.json(statusCancela);
 });
 
-// === ROTAS PUBLICAS PARA A PORTARIA (sem login, com PIN) ===
+// === ROTAS DA PORTARIA (com autenticacao de operador) ===
 
-// Verificar PIN da portaria
-router.post('/portaria/verificar-pin', (req, res) => {
-  const { pin } = req.body;
-
-  if (pin === PIN_PORTARIA) {
-    res.json({ valido: true });
-  } else {
-    res.status(401).json({ valido: false, erro: 'PIN invalido' });
-  }
-});
-
-// Status da cancela (publico para portaria)
-router.get('/portaria/status', (req, res) => {
+// Status da cancela (portaria autenticada)
+router.get('/portaria/status', autenticarPortaria, (req, res) => {
   res.json(statusCancela);
 });
 
 // Abrir cancela (portaria)
-router.post('/portaria/abrir', (req, res) => {
-  const { pin, motivo } = req.body;
-
-  if (pin !== PIN_PORTARIA) {
-    return res.status(401).json({ erro: 'PIN invalido' });
-  }
+router.post('/portaria/abrir', autenticarPortaria, (req, res) => {
+  const { motivo } = req.body;
 
   statusCancela.aberta = true;
   statusCancela.ultimaOperacao = new Date().toISOString();
   statusCancela.motivo = motivo || 'Portaria';
   statusCancela.modoDefinitivo = false;
+  statusCancela.operador = req.usuario?.nome || 'Operador';
 
-  // Iniciar timer
   iniciarTimer();
 
   db.run(
     'INSERT INTO logs (tag_codigo, tipo, dispositivo, observacao) VALUES (?, ?, ?, ?)',
-    ['MANUAL', 'ENTRADA', 'PORTARIA', `Abertura manual: ${motivo || 'Portaria'}`]
+    ['MANUAL', 'ENTRADA', 'PORTARIA', `Abertura: ${motivo || 'Portaria'} - Op: ${req.usuario?.nome}`]
   );
 
-  console.log(`Cancela ABERTA pela Portaria`);
+  console.log(`Cancela ABERTA pela Portaria - Operador: ${req.usuario?.nome}`);
 
   res.json({
     status: 'aberta',
@@ -184,66 +165,55 @@ router.post('/portaria/abrir', (req, res) => {
 });
 
 // Fechar cancela (portaria)
-router.post('/portaria/fechar', (req, res) => {
-  const { pin } = req.body;
-
-  if (pin !== PIN_PORTARIA) {
-    return res.status(401).json({ erro: 'PIN invalido' });
-  }
-
+router.post('/portaria/fechar', autenticarPortaria, (req, res) => {
   statusCancela.aberta = false;
   statusCancela.ultimaOperacao = new Date().toISOString();
   statusCancela.motivo = 'Portaria';
   statusCancela.modoDefinitivo = false;
+  statusCancela.operador = req.usuario?.nome || 'Operador';
 
   pararTimer();
 
   db.run(
     'INSERT INTO logs (tag_codigo, tipo, dispositivo, observacao) VALUES (?, ?, ?, ?)',
-    ['MANUAL', 'SAIDA', 'PORTARIA', 'Fechamento manual - Portaria']
+    ['MANUAL', 'SAIDA', 'PORTARIA', `Fechamento manual - Op: ${req.usuario?.nome}`]
   );
 
-  console.log('Cancela FECHADA pela Portaria');
+  console.log(`Cancela FECHADA pela Portaria - Operador: ${req.usuario?.nome}`);
 
   res.json({ status: 'fechada' });
 });
 
-// === MODO ABERTURA DEFINITIVA ===
-
-// Ativar modo definitivo (cancela fica aberta sem timer)
-router.post('/portaria/definitivo', (req, res) => {
-  const { pin, ativar } = req.body;
-
-  if (pin !== PIN_PORTARIA) {
-    return res.status(401).json({ erro: 'PIN invalido' });
-  }
+// Modo definitivo (portaria)
+router.post('/portaria/definitivo', autenticarPortaria, (req, res) => {
+  const { ativar } = req.body;
 
   statusCancela.modoDefinitivo = ativar;
 
   if (ativar) {
-    // Ativar modo definitivo - cancela fica aberta
     statusCancela.aberta = true;
     statusCancela.motivo = 'Abertura Definitiva';
     statusCancela.ultimaOperacao = new Date().toISOString();
+    statusCancela.operador = req.usuario?.nome || 'Operador';
     pararTimer();
 
     db.run(
       'INSERT INTO logs (tag_codigo, tipo, dispositivo, observacao) VALUES (?, ?, ?, ?)',
-      ['MANUAL', 'ENTRADA', 'PORTARIA', 'Ativado modo Abertura Definitiva']
+      ['MANUAL', 'ENTRADA', 'PORTARIA', `Ativado modo Definitivo - Op: ${req.usuario?.nome}`]
     );
 
-    console.log('Modo ABERTURA DEFINITIVA ativado');
+    console.log(`Modo ABERTURA DEFINITIVA ativado - Operador: ${req.usuario?.nome}`);
   } else {
-    // Desativar modo definitivo
     statusCancela.motivo = null;
     statusCancela.ultimaOperacao = new Date().toISOString();
+    statusCancela.operador = req.usuario?.nome || 'Operador';
 
     db.run(
       'INSERT INTO logs (tag_codigo, tipo, dispositivo, observacao) VALUES (?, ?, ?, ?)',
-      ['MANUAL', 'SAIDA', 'PORTARIA', 'Desativado modo Abertura Definitiva']
+      ['MANUAL', 'SAIDA', 'PORTARIA', `Desativado modo Definitivo - Op: ${req.usuario?.nome}`]
     );
 
-    console.log('Modo ABERTURA DEFINITIVA desativado');
+    console.log(`Modo ABERTURA DEFINITIVA desativado - Operador: ${req.usuario?.nome}`);
   }
 
   res.json({
@@ -252,20 +222,11 @@ router.post('/portaria/definitivo', (req, res) => {
   });
 });
 
-// === SENSOR DE CARRO ===
-
-// Notificar que sensor detectou carro (reseta timer)
-router.post('/portaria/sensor-carro', (req, res) => {
-  const { pin } = req.body;
-
-  if (pin !== PIN_PORTARIA) {
-    return res.status(401).json({ erro: 'PIN invalido' });
-  }
-
+// Sensor de carro (portaria)
+router.post('/portaria/sensor-carro', autenticarPortaria, (req, res) => {
   statusCancela.sensorCarro = true;
   resetarTimer();
 
-  // Desligar flag apos 2 segundos
   setTimeout(() => {
     statusCancela.sensorCarro = false;
   }, 2000);
@@ -306,13 +267,12 @@ router.post('/verificar-e-abrir', (req, res) => {
     );
 
     if (autorizado) {
-      // Se modo definitivo estiver ativo, nao alterar nada
       if (!statusCancela.modoDefinitivo) {
         statusCancela.aberta = true;
         statusCancela.ultimaOperacao = new Date().toISOString();
         statusCancela.motivo = `RFID: ${tag.proprietario}`;
+        statusCancela.operador = 'RFID';
 
-        // Iniciar timer
         iniciarTimer();
       }
 
@@ -332,7 +292,7 @@ router.post('/verificar-e-abrir', (req, res) => {
   });
 });
 
-// Sensor de carro do ESP32 (reseta timer automaticamente)
+// Sensor de carro do ESP32
 router.post('/sensor-carro', (req, res) => {
   const apiKey = req.headers['x-api-key'];
 

@@ -6,10 +6,10 @@ import {
   ScrollText,
   DoorOpen,
   Wifi,
+  Users,
   LogOut,
   Menu,
-  X,
-  Shield
+  X
 } from 'lucide-react'
 
 const menuItems = [
@@ -18,6 +18,7 @@ const menuItems = [
   { path: '/logs', label: 'Historico', icon: ScrollText },
   { path: '/controle', label: 'Controle Cancela', icon: DoorOpen },
   { path: '/dispositivos', label: 'Dispositivos', icon: Wifi },
+  { path: '/operadores', label: 'Operadores Portaria', icon: Users },
 ]
 
 export default function Layout({ children }) {

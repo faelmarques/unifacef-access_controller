@@ -189,3 +189,54 @@ export async function deletarDispositivo(id) {
   });
   return tratarResposta(res);
 }
+
+// Usuarios da Portaria
+export async function buscarUsuariosPortaria() {
+  const res = await fetch(`${API_URL}/usuarios-portaria`, {
+    headers: getHeaders()
+  });
+  return tratarResposta(res);
+}
+
+export async function criarUsuarioPortaria(dados) {
+  const res = await fetch(`${API_URL}/usuarios-portaria`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify(dados)
+  });
+  return tratarResposta(res);
+}
+
+export async function atualizarUsuarioPortaria(id, dados) {
+  const res = await fetch(`${API_URL}/usuarios-portaria/${id}`, {
+    method: 'PUT',
+    headers: getHeaders(),
+    body: JSON.stringify(dados)
+  });
+  return tratarResposta(res);
+}
+
+export async function desativarUsuarioPortaria(id) {
+  const res = await fetch(`${API_URL}/usuarios-portaria/${id}`, {
+    method: 'DELETE',
+    headers: getHeaders()
+  });
+  return tratarResposta(res);
+}
+
+export async function reativarUsuarioPortaria(id) {
+  const res = await fetch(`${API_URL}/usuarios-portaria/${id}/reativar`, {
+    method: 'PUT',
+    headers: getHeaders()
+  });
+  return tratarResposta(res);
+}
+
+export async function loginPortaria(usuario, senha) {
+  const res = await fetch(`${API_URL}/usuarios-portaria/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ usuario, senha })
+  });
+  return tratarResposta(res);
+}

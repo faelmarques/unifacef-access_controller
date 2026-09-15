@@ -19,12 +19,14 @@ const rotasTags = require('./routes/tags');
 const rotasLogs = require('./routes/logs');
 const rotasDispositivos = require('./routes/dispositivos');
 const rotaControleCancela = require('./routes/gate');
+const rotasUsuariosPortaria = require('./routes/usuarios_portaria');
 
 app.use('/api/auth', rotasAuth);
 app.use('/api/tags', rotasTags);
 app.use('/api/logs', rotasLogs);
 app.use('/api/dispositivos', rotasDispositivos);
 app.use('/api/gate', rotaControleCancela);
+app.use('/api/usuarios-portaria', rotasUsuariosPortaria);
 
 // Rota de health check
 app.get('/api/health', (req, res) => {

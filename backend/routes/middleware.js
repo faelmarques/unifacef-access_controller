@@ -16,6 +16,25 @@ function autenticar(req, res, next) {
   }
 }
 
+function autenticarPortaria(req, res, next) {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+
+  if (!token) {
+    return res.status(401).json({ erro: 'Token nao fornecido' });
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (decoded.tipo !== 'portaria') {
+      return res.status(403).json({ erro: 'Acesso nao autorizado' });
+    }
+    req.usuario = decoded;
+    next();
+  } catch (err) {
+    return res.status(401).json({ erro: 'Token invalido ou expirado' });
+  }
+}
+
 function autenticarDispositivo(req, res, next) {
   const apiKey = req.headers['x-api-key'];
 
@@ -30,4 +49,4 @@ function autenticarDispositivo(req, res, next) {
   next();
 }
 
-module.exports = { autenticar, autenticarDispositivo };
+module.exports = { autenticar, autenticarPortaria, autenticarDispositivo };

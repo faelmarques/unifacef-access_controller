@@ -8,6 +8,7 @@ import Tags from './components/Tags'
 import Logs from './components/Logs'
 import ControleCancela from './components/ControleCancela'
 import Dispositivos from './components/Dispositivos'
+import UsuariosPortaria from './components/UsuariosPortaria'
 import Portaria from './components/Portaria'
 import { verificarToken } from './api/api'
 
@@ -55,7 +56,7 @@ export default function App() {
         }}
       />
       <Routes>
-        {/* Rota publica da portaria (sem login, apenas PIN) */}
+        {/* Rota publica da portaria */}
         <Route path="/portaria" element={<Portaria />} />
 
         <Route path="/login" element={<Login />} />
@@ -70,6 +71,7 @@ export default function App() {
                   <Route path="/logs" element={<Logs />} />
                   <Route path="/controle" element={<ControleCancela />} />
                   <Route path="/dispositivos" element={<Dispositivos />} />
+                  <Route path="/operadores" element={<UsuariosPortaria />} />
                 </Routes>
               </Layout>
             </RotaProtegida>

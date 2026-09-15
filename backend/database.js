@@ -64,6 +64,18 @@ function inicializarBanco() {
       )
     `);
 
+    // Tabela de usuarios da portaria
+    db.run(`
+      CREATE TABLE IF NOT EXISTS usuarios_portaria (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome TEXT NOT NULL,
+        usuario TEXT UNIQUE NOT NULL,
+        senha TEXT NOT NULL,
+        ativo INTEGER DEFAULT 1,
+        criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     // Criar admin padrao se nao existir
     db.get('SELECT id FROM usuarios LIMIT 1', (err, row) => {
       if (!row) {

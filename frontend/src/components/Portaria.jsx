@@ -2,21 +2,38 @@ import { useState, useEffect } from 'react'
 import {
   DoorOpen,
   DoorClosed,
-  Shield,
-  LogIn,
-  LogOut,
-  XCircle,
   Clock,
   Car,
   User,
   Timer,
   Lock,
   Unlock,
-  AlertTriangle,
-  CheckCircle
+  LogOut,
+  Loader2
 } from 'lucide-react'
+import { loginPortaria } from '../api/api'
+import toast from 'react-hot-toast'
 
 const API_URL = '/api'
+
+// Icone de cancela (barreira)
+function GateOpen({ className }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M4 6h16M4 6v12M20 6v12M4 12h16M7 6V4h2v2M15 6V4h2v2" />
+      <path d="M7 12v6M17 12v6" strokeDasharray="2 2" />
+    </svg>
+  )
+}
+
+function GateClosed({ className }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M4 6h16M4 6v12M20 6v12M4 12h16M7 6V4h2v2M15 6V4h2v2" />
+      <path d="M7 12v6M17 12v6" />
+    </svg>
+  )
+}
 
 function formatarData(data) {
   return new Date(data).toLocaleString('pt-BR', {
@@ -44,8 +61,11 @@ function BadgeTipo({ tipo }) {
 }
 
 export default function Portaria() {
-  const [pin, setPin] = useState('')
+  const [usuario, setUsuario] = useState('')
+  const [senha, setSenha] = useState('')
   const [autenticado, setAutenticado] = useState(false)
+  const [usuarioLogado, setUsuarioLogado] = useState(null)
+  const [tokenPortaria, setTokenPortaria] = useState(null)
   const [status, setStatus] = useState({
     aberta: false,
     modoDefinitivo: false,
@@ -57,6 +77,7 @@ export default function Portaria() {
   const [operando, setOperando] = useState(false)
   const [erro, setErro] = useState('')
   const [horaAtual, setHoraAtual] = useState(new Date())
+  const [carregando, setCarregando] = useState(false)
 
   // Atualizar relogio
   useEffect(() => {
@@ -66,18 +87,23 @@ export default function Portaria() {
 
   // Carregar dados quando autenticado
   useEffect(() => {
-    if (autenticado) {
+    if (autenticado && tokenPortaria) {
       carregarDados()
       const intervalo = setInterval(carregarDados, 2000)
       return () => clearInterval(intervalo)
     }
-  }, [autenticado])
+  }, [autenticado, tokenPortaria])
 
   async function carregarDados() {
     try {
+      const headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${tokenPortaria}`
+      }
+
       const [statusRes, logsRes] = await Promise.all([
-        fetch(`${API_URL}/gate/portaria/status`),
-        fetch(`${API_URL}/logs/ultimos`)
+        fetch(`${API_URL}/gate/portaria/status`, { headers }),
+        fetch(`${API_URL}/logs/ultimos`, { headers })
       ])
 
       const statusData = await statusRes.json()
@@ -90,25 +116,24 @@ export default function Portaria() {
     }
   }
 
-  async function verificarPin(e) {
+  async function handleLogin(e) {
     e.preventDefault()
     setErro('')
+    setCarregando(true)
 
     try {
-      const res = await fetch(`${API_URL}/gate/portaria/verificar-pin`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin })
-      })
-
-      if (res.ok) {
-        setAutenticado(true)
-      } else {
-        setErro('PIN invalido')
-        setPin('')
-      }
+      const dados = await loginPortaria(usuario, senha)
+      localStorage.setItem('token_portaria', dados.token)
+      localStorage.setItem('usuario_portaria', JSON.stringify(dados.usuario))
+      setTokenPortaria(dados.token)
+      setUsuarioLogado(dados.usuario)
+      setAutenticado(true)
+      toast.success(`Bem-vindo, ${dados.usuario.nome}!`)
     } catch (err) {
-      setErro('Erro ao verificar PIN')
+      setErro(err.message || 'Credenciais invalidas')
+      setSenha('')
+    } finally {
+      setCarregando(false)
     }
   }
 
@@ -117,8 +142,11 @@ export default function Portaria() {
     try {
       await fetch(`${API_URL}/gate/portaria/abrir`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin, motivo: 'Portaria' })
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${tokenPortaria}`
+        },
+        body: JSON.stringify({ motivo: `Portaria - ${usuarioLogado?.nome}` })
       })
       await carregarDados()
     } catch (err) {
@@ -133,8 +161,11 @@ export default function Portaria() {
     try {
       await fetch(`${API_URL}/gate/portaria/fechar`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin })
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${tokenPortaria}`
+        },
+        body: JSON.stringify({ motivo: `Portaria - ${usuarioLogado?.nome}` })
       })
       await carregarDados()
     } catch (err) {
@@ -149,8 +180,14 @@ export default function Portaria() {
     try {
       await fetch(`${API_URL}/gate/portaria/definitivo`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin, ativar: !status.modoDefinitivo })
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${tokenPortaria}`
+        },
+        body: JSON.stringify({
+          ativar: !status.modoDefinitivo,
+          motivo: `Portaria - ${usuarioLogado?.nome}`
+        })
       })
       await carregarDados()
     } catch (err) {
@@ -161,8 +198,13 @@ export default function Portaria() {
   }
 
   function logout() {
+    localStorage.removeItem('token_portaria')
+    localStorage.removeItem('usuario_portaria')
     setAutenticado(false)
-    setPin('')
+    setUsuarioLogado(null)
+    setTokenPortaria(null)
+    setUsuario('')
+    setSenha('')
   }
 
   // Tela de login
@@ -178,31 +220,52 @@ export default function Portaria() {
           </div>
 
           <div className="bg-gray-800 rounded-2xl shadow-xl p-8">
-            <h2 className="text-xl font-semibold text-white text-center mb-6">Digite o PIN</h2>
+            <h2 className="text-xl font-semibold text-white text-center mb-6">Entrar na Portaria</h2>
 
-            <form onSubmit={verificarPin}>
-              <input
-                type="password"
-                className="w-full text-center text-4xl tracking-[0.5em] bg-gray-700 text-white border-0 rounded-xl p-4 mb-4 focus:ring-2 focus:ring-facef-500 outline-none"
-                placeholder="****"
-                maxLength={4}
-                value={pin}
-                onChange={(e) => {
-                  setPin(e.target.value)
-                  setErro('')
-                }}
-                autoFocus
-              />
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div>
+                <label className="text-sm text-gray-400 block mb-1">Usuario</label>
+                <input
+                  type="text"
+                  className="w-full bg-gray-700 text-white border-0 rounded-xl p-3 focus:ring-2 focus:ring-facef-500 outline-none"
+                  placeholder="Seu usuario"
+                  value={usuario}
+                  onChange={(e) => {
+                    setUsuario(e.target.value)
+                    setErro('')
+                  }}
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="text-sm text-gray-400 block mb-1">Senha</label>
+                <input
+                  type="password"
+                  className="w-full bg-gray-700 text-white border-0 rounded-xl p-3 focus:ring-2 focus:ring-facef-500 outline-none"
+                  placeholder="Sua senha"
+                  value={senha}
+                  onChange={(e) => {
+                    setSenha(e.target.value)
+                    setErro('')
+                  }}
+                />
+              </div>
 
               {erro && (
-                <p className="text-red-400 text-center text-sm mb-4">{erro}</p>
+                <p className="text-red-400 text-center text-sm">{erro}</p>
               )}
 
               <button
                 type="submit"
-                className="w-full bg-facef-500 hover:bg-facef-600 text-white font-bold py-4 rounded-xl text-lg transition-colors"
+                disabled={carregando}
+                className="w-full bg-facef-500 hover:bg-facef-600 disabled:bg-gray-600 text-white font-bold py-3 rounded-xl text-lg transition-colors flex items-center justify-center gap-2"
               >
-                Entrar
+                {carregando ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  'Entrar'
+                )}
               </button>
             </form>
           </div>
@@ -232,12 +295,15 @@ export default function Portaria() {
                 {horaAtual.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit' })}
               </p>
             </div>
-            <button
-              onClick={logout}
-              className="p-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-gray-400 hover:text-white"
-            >
-              Sair
-            </button>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-400">{usuarioLogado?.nome}</span>
+              <button
+                onClick={logout}
+                className="p-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-gray-400 hover:text-white"
+              >
+                <LogOut className="h-5 w-5" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -254,9 +320,9 @@ export default function Portaria() {
           {status.modoDefinitivo ? (
             <Unlock className="h-20 w-20 mx-auto mb-4" />
           ) : status.aberta ? (
-            <DoorOpen className="h-20 w-20 mx-auto mb-4" />
+            <GateOpen className="h-20 w-20 mx-auto mb-4" />
           ) : (
-            <DoorClosed className="h-20 w-20 mx-auto mb-4" />
+            <GateClosed className="h-20 w-20 mx-auto mb-4" />
           )}
 
           <h2 className="text-3xl font-bold mb-2">
@@ -300,7 +366,7 @@ export default function Portaria() {
             disabled={operando || status.aberta || status.modoDefinitivo}
             className="bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-8 rounded-2xl text-2xl transition-colors flex flex-col items-center gap-2"
           >
-            <DoorOpen className="h-12 w-12" />
+            <GateOpen className="h-12 w-12" />
             ABRIR
           </button>
 
@@ -309,7 +375,7 @@ export default function Portaria() {
             disabled={operando || !status.aberta || status.modoDefinitivo}
             className="bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-8 rounded-2xl text-2xl transition-colors flex flex-col items-center gap-2"
           >
-            <DoorClosed className="h-12 w-12" />
+            <GateClosed className="h-12 w-12" />
             FECHAR
           </button>
         </div>

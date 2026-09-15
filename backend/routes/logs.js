@@ -165,4 +165,22 @@ router.get('/verificar/:codigo', autenticarDispositivo, (req, res) => {
   });
 });
 
+// Ultimos 5 acessos (para interface da portaria - sem autenticacao)
+router.get('/ultimos', (req, res) => {
+  const sql = `
+    SELECT l.*, t.proprietario, t.veiculo, t.placa, t.departamento
+    FROM logs l
+    LEFT JOIN tags t ON l.tag_codigo = t.codigo
+    ORDER BY l.criado_em DESC
+    LIMIT 5
+  `;
+
+  db.all(sql, [], (err, logs) => {
+    if (err) {
+      return res.status(500).json({ erro: 'Erro ao buscar ultimos acessos' });
+    }
+    res.json(logs);
+  });
+});
+
 module.exports = router;

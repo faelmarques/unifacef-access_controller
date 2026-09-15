@@ -10,6 +10,9 @@ let statusCancela = {
   motivo: null
 };
 
+// PIN da portaria (para operacao sem login)
+const PIN_PORTARIA = '1234';
+
 // Abrir cancela manualmente (pelo dashboard)
 router.post('/abrir', autenticar, (req, res) => {
   const { motivo } = req.body;
@@ -59,6 +62,72 @@ router.post('/fechar', autenticar, (req, res) => {
 // Status atual da cancela
 router.get('/status', autenticar, (req, res) => {
   res.json(statusCancela);
+});
+
+// === ROTAS PUBLICAS PARA A PORTARIA (sem login, com PIN) ===
+
+// Verificar PIN da portaria
+router.post('/portaria/verificar-pin', (req, res) => {
+  const { pin } = req.body;
+
+  if (pin === PIN_PORTARIA) {
+    res.json({ valido: true });
+  } else {
+    res.status(401).json({ valido: false, erro: 'PIN invalido' });
+  }
+});
+
+// Status da cancela (publico para portaria)
+router.get('/portaria/status', (req, res) => {
+  res.json(statusCancela);
+});
+
+// Abrir cancela (portaria)
+router.post('/portaria/abrir', (req, res) => {
+  const { pin, motivo } = req.body;
+
+  if (pin !== PIN_PORTARIA) {
+    return res.status(401).json({ erro: 'PIN invalido' });
+  }
+
+  statusCancela = {
+    aberta: true,
+    ultimaOperacao: new Date().toISOString(),
+    motivo: motivo || 'Portaria'
+  };
+
+  db.run(
+    'INSERT INTO logs (tag_codigo, tipo, dispositivo, observacao) VALUES (?, ?, ?, ?)',
+    ['MANUAL', 'ENTRADA', 'PORTARIA', `Abertura manual: ${motivo || 'Portaria'}`]
+  );
+
+  console.log(`Cancela ABERTA pela Portaria`);
+
+  res.json({ status: 'aberta' });
+});
+
+// Fechar cancela (portaria)
+router.post('/portaria/fechar', (req, res) => {
+  const { pin } = req.body;
+
+  if (pin !== PIN_PORTARIA) {
+    return res.status(401).json({ erro: 'PIN invalido' });
+  }
+
+  statusCancela = {
+    aberta: false,
+    ultimaOperacao: new Date().toISOString(),
+    motivo: 'Portaria'
+  };
+
+  db.run(
+    'INSERT INTO logs (tag_codigo, tipo, dispositivo, observacao) VALUES (?, ?, ?, ?)',
+    ['MANUAL', 'SAIDA', 'PORTARIA', 'Fechamento manual - Portaria']
+  );
+
+  console.log('Cancela FECHADA pela Portaria');
+
+  res.json({ status: 'fechada' });
 });
 
 // Controle via ESP32 - verificar tag e abrir se autorizado

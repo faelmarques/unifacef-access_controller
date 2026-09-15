@@ -173,8 +173,8 @@ router.get('/verificar/:codigo', autenticarDispositivo, (req, res) => {
   });
 });
 
-// Ultimos 5 acessos (para interface da portaria)
-router.get('/ultimos', autenticar, (req, res) => {
+// Ultimos 5 acessos (para interface da portaria e admin)
+router.get('/ultimos', (req, res) => {
   const localId = req.query.local_id || 1;
 
   const sql = `

@@ -110,8 +110,8 @@ export default function Portaria() {
       const statusData = await statusRes.json()
       const logsData = await logsRes.json()
 
-      setStatus(statusData)
-      setUltimosAcessos(logsData)
+      setStatus(statusData || { aberta: false, modoDefinitivo: false, timerAtivo: false, tempoRestante: 0, sensorCarro: false, nomeLocal: null })
+      setUltimosAcessos(Array.isArray(logsData) ? logsData : [])
     } catch (err) {
       console.error('Erro ao carregar dados:', err)
     }

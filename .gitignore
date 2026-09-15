@@ -6,6 +6,7 @@ node_modules/
 # Build
 build/
 dist/
+frontend/dist/
 
 # Ambiente
 .env
@@ -22,6 +23,7 @@ dist/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+backend/logs/
 
 # IDE
 .vscode/
@@ -37,3 +39,6 @@ Thumbs.db
 # Arduino
 esp32/build/
 esp32/.pio/
+
+# PM2
+.pm2/

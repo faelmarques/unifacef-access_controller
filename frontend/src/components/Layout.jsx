@@ -37,7 +37,7 @@ export default function Layout({ children }) {
       {/* Mobile header */}
       <div className="lg:hidden bg-facef-900 text-white p-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Shield className="h-6 w-6" />
+          <img src="/logo-facef.png" alt="UNIFACEF" className="h-8" />
           <span className="font-bold">UNIFACEF</span>
         </div>
         <button
@@ -62,9 +62,7 @@ export default function Layout({ children }) {
           {/* Logo */}
           <div className="p-6 border-b border-facef-800">
             <div className="flex items-center gap-3">
-              <div className="bg-facef-500 p-2 rounded-lg">
-                <Shield className="h-6 w-6" />
-              </div>
+              <img src="/logo-facef.png" alt="UNIFACEF" className="h-10" />
               <div>
                 <h1 className="font-bold text-lg">UNIFACEF</h1>
                 <p className="text-xs text-facef-300">Controle de Acesso</p>

@@ -171,9 +171,7 @@ export default function Portaria() {
       <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex items-center justify-center p-4">
         <div className="w-full max-w-sm">
           <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center bg-facef-500 p-4 rounded-2xl mb-4">
-              <Shield className="h-12 w-12 text-white" />
-            </div>
+            <img src="/logo-facef.png" alt="UNIFACEF" className="h-20 mx-auto mb-4" />
             <h1 className="text-3xl font-bold text-white">UNIFACEF</h1>
             <p className="text-gray-400 mt-2">Controle de Portaria</p>
           </div>
@@ -219,7 +217,7 @@ export default function Portaria() {
       <div className="bg-gray-800 border-b border-gray-700 p-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Shield className="h-8 w-8 text-facef-400" />
+            <img src="/logo-facef.png" alt="UNIFACEF" className="h-10" />
             <div>
               <h1 className="text-xl font-bold">UNIFACEF</h1>
               <p className="text-xs text-gray-400">Controle de Portaria</p>

@@ -39,9 +39,7 @@ export default function Login() {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center bg-white/10 p-4 rounded-2xl mb-4">
-            <Shield className="h-12 w-12 text-white" />
-          </div>
+          <img src="/logo-facef.png" alt="UNIFACEF" className="h-20 mx-auto mb-4" />
           <h1 className="text-3xl font-bold text-white">UNIFACEF</h1>
           <p className="text-facef-200 mt-2">Sistema de Controle de Acesso</p>
         </div>

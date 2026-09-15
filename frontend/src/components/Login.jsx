@@ -39,8 +39,9 @@ export default function Login() {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
-          <img src="/logo-facef.png" alt="UNIFACEF" className="h-20 mx-auto mb-4" />
-          <h1 className="text-3xl font-bold text-white">UNIFACEF</h1>
+          <div className="inline-block bg-white p-3 rounded-2xl mb-4">
+            <img src="/logo-facef.png" alt="FACEF" className="h-16" />
+          </div>
           <p className="text-facef-200 mt-2">Sistema de Controle de Acesso</p>
         </div>
 

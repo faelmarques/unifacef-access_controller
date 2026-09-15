@@ -36,9 +36,8 @@ export default function Layout({ children }) {
     <div className="min-h-screen bg-gray-50">
       {/* Mobile header */}
       <div className="lg:hidden bg-facef-900 text-white p-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <img src="/logo-facef.png" alt="UNIFACEF" className="h-8" />
-          <span className="font-bold">UNIFACEF</span>
+        <div className="bg-white p-1 rounded-lg">
+          <img src="/logo-facef.png" alt="FACEF" className="h-8" />
         </div>
         <button
           onClick={() => setSidebarAberta(!sidebarAberta)}
@@ -61,12 +60,8 @@ export default function Layout({ children }) {
         >
           {/* Logo */}
           <div className="p-6 border-b border-facef-800">
-            <div className="flex items-center gap-3">
-              <img src="/logo-facef.png" alt="UNIFACEF" className="h-10" />
-              <div>
-                <h1 className="font-bold text-lg">UNIFACEF</h1>
-                <p className="text-xs text-facef-300">Controle de Acesso</p>
-              </div>
+            <div className="bg-white p-2 rounded-lg inline-block">
+              <img src="/logo-facef.png" alt="FACEF" className="h-10" />
             </div>
           </div>
 

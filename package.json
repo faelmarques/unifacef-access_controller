@@ -1,0 +1,9 @@
+{
+  "name": "facef-rfid-access",
+  "version": "1.0.0",
+  "description": "Sistema de Controle de Acesso por RFID - UNIFACEF",
+  "scripts": {
+    "build": "cd backend && npm install && cd ../frontend && npm install && npm run build",
+    "start": "cd backend && node server.js"
+  }
+}

@@ -19,6 +19,7 @@
 #define PINO_BUZZER 26            // Buzzer para feedback sonoro
 #define PINO_LED_VERDE 27         // LED verde (acesso liberado)
 #define PINO_LED_VERMELHO 14      // LED vermelho (acesso negado)
+#define PINO_SENSOR_CARRO 34      // Sensor de presenca/ultrassonico (entrada)
 
 // --- RFID UHF (pins para serial) ---
 #define RFID_RX_PIN 16            // RX2 do ESP32
@@ -30,7 +31,7 @@
 #define OLED_ADDR 0x3C
 
 // --- Temporizacao ---
-#define TEMPO_ABERTURA_CANCELA 5000   // 5 segundos aberta
+#define TEMPO_ABERTURA_CANCELA 10000  // 10 segundos (padrao)
 #define TEMPO_ENTRE_LEITURAS 500      // 500ms entre leituras
 #define INTERVALO_HEARTBEAT 30000     // 30 segundos
 

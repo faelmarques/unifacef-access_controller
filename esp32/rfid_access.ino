@@ -1,9 +1,10 @@
 // ============================================================
 // FACEF - Controle de Acesso por RFID
-// Firmware ESP32 - Versao Completa
+// Firmware ESP32 - Versao com Sensor de Carro e Timer
 // ============================================================
 // Placa: ESP32 DevKit V1
 // Leitor: RFID UHF (JR1080 ou similar)
+// Sensor: Presenca/Ultrassonico no pin 34
 // ============================================================
 
 #include <WiFi.h>
@@ -28,9 +29,19 @@ SoftwareSerial rfidSerial(RFID_RX_PIN, RFID_TX_PIN);
 
 // Controle da cancela
 bool cancelaAberta = false;
+bool modoDefinitivo = false;
 unsigned long tempoAbertura = 0;
 unsigned long ultimoHeartbeat = 0;
 unsigned long ultimaLeitura = 0;
+unsigned long ultimoSensorCarro = 0;
+
+// Timer local
+int tempoRestante = 0;
+bool timerAtivo = false;
+
+// Sensor de carro
+bool sensorCarroDetectado = false;
+bool ultimoEstadoSensor = false;
 
 // Buffer para tag lida
 char bufferTag[TAMANHO_BUFFER_TAG];
@@ -96,28 +107,31 @@ void mostrarStatus() {
   display.println("FACEF - RFID");
   
   // Status da cancela
-  display.setCursor(0, 16);
+  display.setCursor(0, 14);
   display.print("Cancela: ");
-  display.println(cancelaAberta ? "ABERTA" : "FECHADA");
+  if (modoDefinitivo) {
+    display.println("DEFINITIVO");
+  } else {
+    display.println(cancelaAberta ? "ABERTA" : "FECHADA");
+  }
   
-  // Status Wi-Fi
-  display.setCursor(0, 28);
+  // Timer
+  if (timerAtivo && !modoDefinitivo) {
+    display.setCursor(0, 26);
+    display.print("Timer: ");
+    display.print(tempoRestante);
+    display.println("s");
+  }
+  
+  // Sensor
+  display.setCursor(0, 38);
+  display.print("Sensor: ");
+  display.println(sensorCarroDetectado ? "CARRO" : "Livre");
+  
+  // Wi-Fi
+  display.setCursor(0, 50);
   display.print("Wi-Fi: ");
   display.println(WiFi.status() == WL_CONNECTED ? "OK" : "ERRO");
-  
-  // IP
-  display.setCursor(0, 40);
-  display.println(WiFi.localIP());
-  
-  // Hora
-  display.setCursor(0, 52);
-  unsigned long segundos = millis() / 1000;
-  int horas = (segundos / 3600) % 24;
-  int minutos = (segundos / 60) % 60;
-  int segs = segundos % 60;
-  char hora[10];
-  sprintf(hora, "%02d:%02d:%02d", horas, minutos, segs);
-  display.println(hora);
   
   display.display();
 }
@@ -126,12 +140,35 @@ void mostrarStatus() {
 // Controle da cancela
 // ============================================================
 
+void iniciarTimerLocal() {
+  tempoAbertura = millis();
+  tempoRestante = TEMPORIZADOR_SEGUNDOS;
+  timerAtivo = true;
+  Serial.println("Timer iniciado: " + String(TEMPORIZADOR_SEGUNDOS) + "s");
+}
+
+void pararTimerLocal() {
+  timerAtivo = false;
+  tempoRestante = 0;
+}
+
+void resetarTimerLocal() {
+  if (cancelaAberta && !modoDefinitivo) {
+    tempoAbertura = millis();
+    tempoRestante = TEMPORIZADOR_SEGUNDOS;
+    Serial.println("Timer resetado - Sensor de carro");
+  }
+}
+
 void abrirCancela() {
   digitalWrite(PINO_RELAY_CANCELA, HIGH);
   digitalWrite(PINO_LED_VERDE, HIGH);
   digitalWrite(PINO_BUZZER, HIGH);
   cancelaAberta = true;
-  tempoAbertura = millis();
+  
+  if (!modoDefinitivo) {
+    iniciarTimerLocal();
+  }
   
   Serial.println(">> Cancela ABERTA");
   mostrarMensagem("ACESSO", "LIBERADO");
@@ -145,6 +182,7 @@ void fecharCancela() {
   digitalWrite(PINO_LED_VERDE, LOW);
   digitalWrite(PINO_LED_VERMELHO, LOW);
   cancelaAberta = false;
+  pararTimerLocal();
   
   Serial.println(">> Cancela FECHADA");
 }
@@ -186,8 +224,15 @@ bool verificarTagServidor(String tag) {
     String response = http.getString();
     Serial.println("Resposta: " + response);
     
-    // Verificar se autorizado
     bool autorizado = response.indexOf("\"autorizado\":true") >= 0;
+    
+    // Verificar modo definitivo
+    if (response.indexOf("\"modoDefinitivo\":true") >= 0) {
+      modoDefinitivo = true;
+      Serial.println("Modo definitivo ativo no servidor");
+    } else {
+      modoDefinitivo = false;
+    }
     
     http.end();
     return autorizado;
@@ -198,13 +243,53 @@ bool verificarTagServidor(String tag) {
   }
 }
 
-void enviarHeartbeat() {
+void notificarSensorCarro() {
   if (WiFi.status() != WL_CONNECTED) return;
   
   HTTPClient http;
-  // Aqui voce pode implementar o heartbeat se tiver o ID do dispositivo
-  // Por enquanto, apenas mantemos a conexao
+  String url = String(SERVER_URL) + "/api/gate/sensor-carro";
+  
+  http.begin(url);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("x-api-key", DEVICE_API_KEY);
+  
+  String json = "{\"dispositivo\":\"ESP32-01\"}";
+  http.POST(json);
   http.end();
+}
+
+void enviarHeartbeat() {
+  if (WiFi.status() != WL_CONNECTED) return;
+  // Heartbeat periodico (pode ser implementado futuramente)
+}
+
+// ============================================================
+// Leitura do sensor de carro
+// ============================================================
+
+void verificarSensorCarro() {
+  // Leitura analogica do sensor (ultrassonico ou IR)
+  // Valor baixo = carro detectado (varia conforme o sensor)
+  bool estadoAtual = digitalRead(PINO_SENSOR_CARRO) == LOW;
+  
+  if (estadoAtual && !ultimoEstadoSensor) {
+    // Carro detectado (borda de subida)
+    sensorCarroDetectado = true;
+    ultimoSensorCarro = millis();
+    
+    Serial.println(">> Sensor: CARRO DETECTADO");
+    
+    // Notificar servidor e resetar timer
+    notificarSensorCarro();
+    resetarTimerLocal();
+  }
+  
+  // Desativar flag apos 2 segundos
+  if (sensorCarroDetectado && (millis() - ultimoSensorCarro >= 2000)) {
+    sensorCarroDetectado = false;
+  }
+  
+  ultimoEstadoSensor = estadoAtual;
 }
 
 // ============================================================
@@ -245,7 +330,7 @@ void setup() {
   
   Serial.println("\n=================================");
   Serial.println("FACEF - Sistema de Controle de Acesso");
-  Serial.println("Versao 1.0.0");
+  Serial.println("Versao 2.0.0 - Com Sensor e Timer");
   Serial.println("=================================\n");
   
   // Configurar pinos
@@ -253,6 +338,7 @@ void setup() {
   pinMode(PINO_BUZZER, OUTPUT);
   pinMode(PINO_LED_VERDE, OUTPUT);
   pinMode(PINO_LED_VERMELHO, OUTPUT);
+  pinMode(PINO_SENSOR_CARRO, INPUT_PULLUP);
   
   // Garantir cancela fechada
   digitalWrite(PINO_RELAY_CANCELA, LOW);
@@ -273,6 +359,8 @@ void setup() {
   display.setCursor(0, 0);
   display.println("FACEF - Controle de Acesso");
   display.setCursor(0, 20);
+  display.println("Versao 2.0.0");
+  display.setCursor(0, 35);
   display.println("Iniciando...");
   display.display();
   
@@ -287,6 +375,8 @@ void setup() {
   digitalWrite(PINO_BUZZER, LOW);
   
   Serial.println("Sistema pronto!");
+  Serial.println("Sensor de carro: GPIO " + String(PINO_SENSOR_CARRO));
+  Serial.println("Timer: " + String(TEMPORIZADOR_SEGUNDOS) + " segundos");
   Serial.println("Aguardando tags RFID...\n");
 }
 
@@ -295,12 +385,21 @@ void setup() {
 // ============================================================
 
 void loop() {
-  // Verificar se cancela precisa fechar
-  if (cancelaAberta && (millis() - tempoAbertura >= TEMPO_ABERTURA_CANCELA)) {
-    fecharCancela();
+  // Verificar sensor de carro
+  verificarSensorCarro();
+  
+  // Verificar se cancela precisa fechar (timer local)
+  if (cancelaAberta && !modoDefinitivo && timerAtivo) {
+    unsigned long elapsed = (millis() - tempoAbertura) / 1000;
+    tempoRestante = max(0, TEMPORIZADOR_SEGUNDOS - (int)elapsed);
+    
+    if (tempoRestante <= 0) {
+      Serial.println(">> Timer expirado - Fechando cancela");
+      fecharCancela();
+    }
   }
   
-  // Heartbeat_periodico
+  // Heartbeat periodico
   if (millis() - ultimoHeartbeat >= INTERVALO_HEARTBEAT) {
     enviarHeartbeat();
     ultimoHeartbeat = millis();

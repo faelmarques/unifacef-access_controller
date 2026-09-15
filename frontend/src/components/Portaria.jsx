@@ -9,7 +9,11 @@ import {
   Clock,
   Car,
   User,
-  Hash
+  Timer,
+  Lock,
+  Unlock,
+  AlertTriangle,
+  CheckCircle
 } from 'lucide-react'
 
 const API_URL = '/api'
@@ -28,7 +32,8 @@ function BadgeTipo({ tipo }) {
     ENTRADA: 'bg-green-500',
     SAIDA: 'bg-blue-500',
     NEGADO: 'bg-red-500',
-    MANUAL: 'bg-yellow-500'
+    MANUAL: 'bg-yellow-500',
+    TIMER: 'bg-orange-500'
   }
 
   return (
@@ -41,7 +46,13 @@ function BadgeTipo({ tipo }) {
 export default function Portaria() {
   const [pin, setPin] = useState('')
   const [autenticado, setAutenticado] = useState(false)
-  const [status, setStatus] = useState({ aberta: false })
+  const [status, setStatus] = useState({
+    aberta: false,
+    modoDefinitivo: false,
+    timerAtivo: false,
+    tempoRestante: 0,
+    sensorCarro: false
+  })
   const [ultimosAcessos, setUltimosAcessos] = useState([])
   const [operando, setOperando] = useState(false)
   const [erro, setErro] = useState('')
@@ -57,7 +68,7 @@ export default function Portaria() {
   useEffect(() => {
     if (autenticado) {
       carregarDados()
-      const intervalo = setInterval(carregarDados, 3000)
+      const intervalo = setInterval(carregarDados, 2000)
       return () => clearInterval(intervalo)
     }
   }, [autenticado])
@@ -128,6 +139,22 @@ export default function Portaria() {
       await carregarDados()
     } catch (err) {
       console.error('Erro ao fechar cancela:', err)
+    } finally {
+      setOperando(false)
+    }
+  }
+
+  async function toggleModoDefinitivo() {
+    setOperando(true)
+    try {
+      await fetch(`${API_URL}/gate/portaria/definitivo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin, ativar: !status.modoDefinitivo })
+      })
+      await carregarDados()
+    } catch (err) {
+      console.error('Erro ao alterar modo definitivo:', err)
     } finally {
       setOperando(false)
     }
@@ -221,21 +248,50 @@ export default function Portaria() {
       <div className="max-w-4xl mx-auto p-4 space-y-6">
         {/* Status da cancela */}
         <div className={`rounded-2xl p-6 text-center ${
-          status.aberta
-            ? 'bg-gradient-to-r from-green-600 to-green-700'
-            : 'bg-gradient-to-r from-red-600 to-red-700'
+          status.modoDefinitivo
+            ? 'bg-gradient-to-r from-purple-600 to-purple-700'
+            : status.aberta
+              ? 'bg-gradient-to-r from-green-600 to-green-700'
+              : 'bg-gradient-to-r from-red-600 to-red-700'
         }`}>
-          {status.aberta ? (
-            <DoorOpen className="h-24 w-24 mx-auto mb-4" />
+          {status.modoDefinitivo ? (
+            <Unlock className="h-20 w-20 mx-auto mb-4" />
+          ) : status.aberta ? (
+            <DoorOpen className="h-20 w-20 mx-auto mb-4" />
           ) : (
-            <DoorClosed className="h-24 w-24 mx-auto mb-4" />
+            <DoorClosed className="h-20 w-20 mx-auto mb-4" />
           )}
+
           <h2 className="text-3xl font-bold mb-2">
-            CANCELA {status.aberta ? 'ABERTA' : 'FECHADA'}
+            {status.modoDefinitivo
+              ? 'MODO DEFINITIVO'
+              : status.aberta
+                ? 'CANCELA ABERTA'
+                : 'CANCELA FECHADA'
+            }
           </h2>
-          {status.ultimaOperacao && (
-            <p className="text-sm opacity-80">
-              Ultima operacao: {formatarData(status.ultimaOperacao)}
+
+          {/* Timer */}
+          {status.timerAtivo && !status.modoDefinitivo && (
+            <div className="flex items-center justify-center gap-2 mt-4">
+              <Timer className="h-6 w-6" />
+              <span className="text-4xl font-mono font-bold">
+                {status.tempoRestante}s
+              </span>
+            </div>
+          )}
+
+          {/* Sensor */}
+          {status.sensorCarro && (
+            <div className="flex items-center justify-center gap-2 mt-2 text-yellow-300">
+              <Car className="h-5 w-5" />
+              <span className="text-sm font-medium">Carro detectado - Timer resetado</span>
+            </div>
+          )}
+
+          {status.modoDefinitivo && (
+            <p className="text-sm opacity-80 mt-2">
+              Cancela permanecera aberta ate desativar o modo definitivo
             </p>
           )}
         </div>
@@ -244,7 +300,7 @@ export default function Portaria() {
         <div className="grid grid-cols-2 gap-4">
           <button
             onClick={abrirCancela}
-            disabled={operando || status.aberta}
+            disabled={operando || status.aberta || status.modoDefinitivo}
             className="bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-8 rounded-2xl text-2xl transition-colors flex flex-col items-center gap-2"
           >
             <DoorOpen className="h-12 w-12" />
@@ -253,13 +309,36 @@ export default function Portaria() {
 
           <button
             onClick={fecharCancela}
-            disabled={operando || !status.aberta}
+            disabled={operando || !status.aberta || status.modoDefinitivo}
             className="bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-8 rounded-2xl text-2xl transition-colors flex flex-col items-center gap-2"
           >
             <DoorClosed className="h-12 w-12" />
             FECHAR
           </button>
         </div>
+
+        {/* Botao modo definitivo */}
+        <button
+          onClick={toggleModoDefinitivo}
+          disabled={operando}
+          className={`w-full font-bold py-6 rounded-2xl text-xl transition-colors flex items-center justify-center gap-3 ${
+            status.modoDefinitivo
+              ? 'bg-purple-600 hover:bg-purple-700 text-white'
+              : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+          }`}
+        >
+          {status.modoDefinitivo ? (
+            <>
+              <Lock className="h-8 w-8" />
+              DESATIVAR MODO DEFINITIVO
+            </>
+          ) : (
+            <>
+              <Unlock className="h-8 w-8" />
+              ABERTURA DEFINITIVA
+            </>
+          )}
+        </button>
 
         {/* Ultimos acessos */}
         <div className="bg-gray-800 rounded-2xl p-4">
@@ -304,9 +383,10 @@ export default function Portaria() {
         </div>
 
         {/* Instrucoes */}
-        <div className="bg-gray-800/50 rounded-xl p-4 text-center text-xs text-gray-500">
-          <p>A cancela abre automaticamente quando uma tag autorizada eh detectada.</p>
-          <p>Use os botoes acima apenas para operacao manual.</p>
+        <div className="bg-gray-800/50 rounded-xl p-4 text-xs text-gray-500 space-y-1">
+          <p><strong>Timer:</strong> Ao abrir, a cancela fecha automaticamente em {status.tempoRestante || 10}s</p>
+          <p><strong>Sensor:</strong> Quando um carro passa, o timer eh resetado</p>
+          <p><strong>Modo Definitivo:</strong> Cancela fica aberta sem timer (para eventos especiais)</p>
         </div>
       </div>
     </div>

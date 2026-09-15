@@ -5,12 +5,13 @@ const { autenticar, autenticarDispositivo } = require('./middleware');
 
 // Listar logs (para o dashboard)
 router.get('/', autenticar, (req, res) => {
-  const { data_inicio, data_fim, tag, tipo, limite } = req.query;
+  const { data_inicio, data_fim, tag, tipo, local_id, limite } = req.query;
 
   let sql = `
-    SELECT l.*, t.proprietario, t.veiculo, t.placa, t.departamento
+    SELECT l.*, t.proprietario, t.veiculo, t.placa, t.departamento, lo.nome as nome_local
     FROM logs l
     LEFT JOIN tags t ON l.tag_codigo = t.codigo
+    LEFT JOIN locais lo ON l.local_id = lo.id
     WHERE 1=1
   `;
   const params = [];
@@ -35,6 +36,11 @@ router.get('/', autenticar, (req, res) => {
     params.push(tipo);
   }
 
+  if (local_id) {
+    sql += ' AND l.local_id = ?';
+    params.push(parseInt(local_id));
+  }
+
   sql += ' ORDER BY l.criado_em DESC';
 
   if (limite) {
@@ -57,9 +63,11 @@ router.get('/stats', autenticar, (req, res) => {
   const sql = `
     SELECT
       COUNT(*) as total_acessos,
-      SUM(CASE WHEN tipo = 'ENTRADA' THEN 1 ELSE 0 END) as entradas,
-      SUM(CASE WHEN tipo = 'SAIDA' THEN 1 ELSE 0 END) as saidas,
-      SUM(CASE WHEN tipo = 'NEGADO' THEN 1 ELSE 0 END) as negados
+      SUM(CASE WHEN tipo = 'ABERTURA' OR tipo = 'ABERTURA_RFID' THEN 1 ELSE 0 END) as aberturas,
+      SUM(CASE WHEN tipo = 'FECHAMENTO' THEN 1 ELSE 0 END) as fechamentos,
+      SUM(CASE WHEN tipo = 'FECHAMENTO_AUTOMATICO' THEN 1 ELSE 0 END) as fechamentos_automaticos,
+      SUM(CASE WHEN tipo = 'ACESSO_NEGADO' THEN 1 ELSE 0 END) as negados,
+      SUM(CASE WHEN tipo = 'ABERTURA_DEFINITIVA' THEN 1 ELSE 0 END) as definitivos
     FROM logs
     WHERE criado_em >= datetime('now', '-24 hours')
   `;
@@ -104,7 +112,7 @@ router.get('/stats/top-usuarios', autenticar, (req, res) => {
       COUNT(*) as total_acessos
     FROM logs l
     LEFT JOIN tags t ON l.tag_codigo = t.codigo
-    WHERE l.tipo = 'ENTRADA'
+    WHERE l.tipo = 'ABERTURA_RFID'
       AND l.criado_em >= datetime('now', '-7 days')
     GROUP BY l.tag_codigo
     ORDER BY total_acessos DESC
@@ -121,15 +129,15 @@ router.get('/stats/top-usuarios', autenticar, (req, res) => {
 
 // Registrar acesso (chamado pelo ESP32)
 router.post('/registrar', autenticarDispositivo, (req, res) => {
-  const { tag_codigo, tipo, dispositivo, observacao } = req.body;
+  const { tag_codigo, tipo, dispositivo, local_id, operador, observacao } = req.body;
 
   if (!tag_codigo || !tipo) {
     return res.status(400).json({ erro: 'Tag e tipo sao obrigatorios' });
   }
 
   db.run(
-    'INSERT INTO logs (tag_codigo, tipo, dispositivo, observacao) VALUES (?, ?, ?, ?)',
-    [tag_codigo, tipo, dispositivo || 'N/A', observacao || ''],
+    'INSERT INTO logs (tag_codigo, tipo, dispositivo, local_id, operador, observacao) VALUES (?, ?, ?, ?, ?, ?)',
+    [tag_codigo, tipo, dispositivo || 'N/A', local_id || 1, operador || 'Sistema', observacao || ''],
     function (err) {
       if (err) {
         return res.status(500).json({ erro: 'Erro ao registrar acesso' });
@@ -165,17 +173,21 @@ router.get('/verificar/:codigo', autenticarDispositivo, (req, res) => {
   });
 });
 
-// Ultimos 5 acessos (para interface da portaria - sem autenticacao)
-router.get('/ultimos', (req, res) => {
+// Ultimos 5 acessos (para interface da portaria)
+router.get('/ultimos', autenticar, (req, res) => {
+  const localId = req.query.local_id || 1;
+
   const sql = `
-    SELECT l.*, t.proprietario, t.veiculo, t.placa, t.departamento
+    SELECT l.*, t.proprietario, t.veiculo, t.placa, t.departamento, lo.nome as nome_local
     FROM logs l
     LEFT JOIN tags t ON l.tag_codigo = t.codigo
+    LEFT JOIN locais lo ON l.local_id = lo.id
+    WHERE l.local_id = ?
     ORDER BY l.criado_em DESC
     LIMIT 5
   `;
 
-  db.all(sql, [], (err, logs) => {
+  db.all(sql, [localId], (err, logs) => {
     if (err) {
       return res.status(500).json({ erro: 'Erro ao buscar ultimos acessos' });
     }

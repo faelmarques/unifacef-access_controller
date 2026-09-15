@@ -9,6 +9,7 @@ import Logs from './components/Logs'
 import ControleCancela from './components/ControleCancela'
 import Dispositivos from './components/Dispositivos'
 import UsuariosPortaria from './components/UsuariosPortaria'
+import Locais from './components/Locais'
 import Portaria from './components/Portaria'
 import { verificarToken } from './api/api'
 
@@ -70,6 +71,7 @@ export default function App() {
                   <Route path="/tags" element={<Tags />} />
                   <Route path="/logs" element={<Logs />} />
                   <Route path="/controle" element={<ControleCancela />} />
+                  <Route path="/locais" element={<Locais />} />
                   <Route path="/dispositivos" element={<Dispositivos />} />
                   <Route path="/operadores" element={<UsuariosPortaria />} />
                 </Routes>

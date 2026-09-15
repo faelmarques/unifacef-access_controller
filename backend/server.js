@@ -20,6 +20,7 @@ const rotasLogs = require('./routes/logs');
 const rotasDispositivos = require('./routes/dispositivos');
 const rotaControleCancela = require('./routes/gate');
 const rotasUsuariosPortaria = require('./routes/usuarios_portaria');
+const rotasLocais = require('./routes/locais');
 
 app.use('/api/auth', rotasAuth);
 app.use('/api/tags', rotasTags);
@@ -27,6 +28,7 @@ app.use('/api/logs', rotasLogs);
 app.use('/api/dispositivos', rotasDispositivos);
 app.use('/api/gate', rotaControleCancela);
 app.use('/api/usuarios-portaria', rotasUsuariosPortaria);
+app.use('/api/locais', rotasLocais);
 
 // Rota de health check
 app.get('/api/health', (req, res) => {

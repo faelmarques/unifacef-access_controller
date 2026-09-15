@@ -25,6 +25,17 @@ function inicializarBanco() {
       )
     `);
 
+    // Tabela de locais (estacionamentos, unidades, etc)
+    db.run(`
+      CREATE TABLE IF NOT EXISTS locais (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome TEXT NOT NULL,
+        descricao TEXT,
+        ativo INTEGER DEFAULT 1,
+        criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     // Tabela de tags RFID autorizadas
     db.run(`
       CREATE TABLE IF NOT EXISTS tags (
@@ -34,8 +45,10 @@ function inicializarBanco() {
         veiculo TEXT,
         placa TEXT,
         departamento TEXT,
+        local_id INTEGER,
         ativo INTEGER DEFAULT 1,
-        criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+        criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (local_id) REFERENCES locais(id)
       )
     `);
 
@@ -43,11 +56,14 @@ function inicializarBanco() {
     db.run(`
       CREATE TABLE IF NOT EXISTS logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        tag_codigo TEXT NOT NULL,
+        tag_codigo TEXT,
         tipo TEXT NOT NULL,
         dispositivo TEXT,
+        local_id INTEGER,
+        operador TEXT,
         observacao TEXT,
-        criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+        criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (local_id) REFERENCES locais(id)
       )
     `);
 
@@ -56,11 +72,13 @@ function inicializarBanco() {
       CREATE TABLE IF NOT EXISTS dispositivos (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         nome TEXT NOT NULL,
-        localizacao TEXT,
+        local_id INTEGER,
+        tipo TEXT DEFAULT 'cancela',
         api_key TEXT UNIQUE NOT NULL,
         online INTEGER DEFAULT 0,
         ultimo_heartbeat DATETIME,
-        criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+        criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (local_id) REFERENCES locais(id)
       )
     `);
 
@@ -71,8 +89,10 @@ function inicializarBanco() {
         nome TEXT NOT NULL,
         usuario TEXT UNIQUE NOT NULL,
         senha TEXT NOT NULL,
+        local_id INTEGER,
         ativo INTEGER DEFAULT 1,
-        criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+        criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (local_id) REFERENCES locais(id)
       )
     `);
 

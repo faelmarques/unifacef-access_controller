@@ -240,3 +240,67 @@ export async function loginPortaria(usuario, senha) {
   });
   return tratarResposta(res);
 }
+
+// Locais
+export async function buscarLocais() {
+  const res = await fetch(`${API_URL}/locais`, {
+    headers: getHeaders()
+  });
+  return tratarResposta(res);
+}
+
+export async function buscarLocaisAtivos() {
+  const res = await fetch(`${API_URL}/locais/ativos/lista`, {
+    headers: getHeaders()
+  });
+  return tratarResposta(res);
+}
+
+export async function criarLocal(dados) {
+  const res = await fetch(`${API_URL}/locais`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify(dados)
+  });
+  return tratarResposta(res);
+}
+
+export async function atualizarLocal(id, dados) {
+  const res = await fetch(`${API_URL}/locais/${id}`, {
+    method: 'PUT',
+    headers: getHeaders(),
+    body: JSON.stringify(dados)
+  });
+  return tratarResposta(res);
+}
+
+export async function desativarLocal(id) {
+  const res = await fetch(`${API_URL}/locais/${id}`, {
+    method: 'DELETE',
+    headers: getHeaders()
+  });
+  return tratarResposta(res);
+}
+
+export async function reativarLocal(id) {
+  const res = await fetch(`${API_URL}/locais/${id}/reativar`, {
+    method: 'PUT',
+    headers: getHeaders()
+  });
+  return tratarResposta(res);
+}
+
+// Status cancela por local
+export async function statusCancelaLocal(localId) {
+  const res = await fetch(`${API_URL}/gate/status/${localId}`, {
+    headers: getHeaders()
+  });
+  return tratarResposta(res);
+}
+
+export async function statusGeral() {
+  const res = await fetch(`${API_URL}/gate/status-geral`, {
+    headers: getHeaders()
+  });
+  return tratarResposta(res);
+}

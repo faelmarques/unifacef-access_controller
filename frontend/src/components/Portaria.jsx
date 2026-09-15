@@ -9,7 +9,8 @@ import {
   Lock,
   Unlock,
   LogOut,
-  Loader2
+  Loader2,
+  MapPin
 } from 'lucide-react'
 import { loginPortaria } from '../api/api'
 import toast from 'react-hot-toast'
@@ -44,20 +45,17 @@ function formatarData(data) {
   })
 }
 
-function BadgeTipo({ tipo }) {
-  const estilos = {
-    ENTRADA: 'bg-green-500',
-    SAIDA: 'bg-blue-500',
-    NEGADO: 'bg-red-500',
-    MANUAL: 'bg-yellow-500',
-    TIMER: 'bg-orange-500'
+function traduzirTipo(tipo) {
+  const traducoes = {
+    ABERTURA: { texto: 'Abertura Manual', cor: 'bg-green-500' },
+    ABERTURA_RFID: { texto: 'Abertura RFID', cor: 'bg-blue-500' },
+    FECHAMENTO: { texto: 'Fechamento Manual', cor: 'bg-red-500' },
+    FECHAMENTO_AUTOMATICO: { texto: 'Fechamento Auto', cor: 'bg-orange-500' },
+    ABERTURA_DEFINITIVA: { texto: 'Modo Definitivo', cor: 'bg-purple-500' },
+    DESATIVAR_DEFINITIVO: { texto: 'Desativar Definitivo', cor: 'bg-gray-500' },
+    ACESSO_NEGADO: { texto: 'Acesso Negado', cor: 'bg-red-600' }
   }
-
-  return (
-    <span className={`${estilos[tipo] || 'bg-gray-500'} text-white text-xs font-bold px-2 py-1 rounded`}>
-      {tipo}
-    </span>
-  )
+  return traducoes[tipo] || { texto: tipo, cor: 'bg-gray-500' }
 }
 
 export default function Portaria() {
@@ -71,7 +69,8 @@ export default function Portaria() {
     modoDefinitivo: false,
     timerAtivo: false,
     tempoRestante: 0,
-    sensorCarro: false
+    sensorCarro: false,
+    nomeLocal: null
   })
   const [ultimosAcessos, setUltimosAcessos] = useState([])
   const [operando, setOperando] = useState(false)
@@ -101,9 +100,11 @@ export default function Portaria() {
         'Authorization': `Bearer ${tokenPortaria}`
       }
 
+      const localId = usuarioLogado?.local_id || 1
+
       const [statusRes, logsRes] = await Promise.all([
         fetch(`${API_URL}/gate/portaria/status`, { headers }),
-        fetch(`${API_URL}/logs/ultimos`, { headers })
+        fetch(`${API_URL}/logs/ultimos?local_id=${localId}`, { headers })
       ])
 
       const statusData = await statusRes.json()
@@ -146,7 +147,7 @@ export default function Portaria() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${tokenPortaria}`
         },
-        body: JSON.stringify({ motivo: `Portaria - ${usuarioLogado?.nome}` })
+        body: JSON.stringify({ motivo: 'Abertura Manual' })
       })
       await carregarDados()
     } catch (err) {
@@ -164,8 +165,7 @@ export default function Portaria() {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${tokenPortaria}`
-        },
-        body: JSON.stringify({ motivo: `Portaria - ${usuarioLogado?.nome}` })
+        }
       })
       await carregarDados()
     } catch (err) {
@@ -184,10 +184,7 @@ export default function Portaria() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${tokenPortaria}`
         },
-        body: JSON.stringify({
-          ativar: !status.modoDefinitivo,
-          motivo: `Portaria - ${usuarioLogado?.nome}`
-        })
+        body: JSON.stringify({ ativar: !status.modoDefinitivo })
       })
       await carregarDados()
     } catch (err) {
@@ -284,6 +281,12 @@ export default function Portaria() {
             <div className="bg-white p-1 rounded-lg">
               <img src="/logo-facef.png" alt="FACEF" className="h-8" />
             </div>
+            {status.nomeLocal && (
+              <div className="flex items-center gap-1 text-sm text-gray-400">
+                <MapPin className="h-4 w-4" />
+                <span>{status.nomeLocal}</span>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-4">
@@ -414,40 +417,53 @@ export default function Portaria() {
             <p className="text-gray-500 text-center py-8">Nenhum acesso registrado</p>
           ) : (
             <div className="space-y-3">
-              {ultimosAcessos.map((acesso) => (
-                <div
-                  key={acesso.id}
-                  className="bg-gray-700 rounded-xl p-4 flex items-center justify-between"
-                >
-                  <div className="flex items-center gap-4">
-                    <BadgeTipo tipo={acesso.tipo} />
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <Car className="h-4 w-4 text-gray-400" />
-                        <span className="font-mono font-bold">{acesso.placa || 'N/A'}</span>
+              {ultimosAcessos.map((acesso) => {
+                const tipoInfo = traduzirTipo(acesso.tipo)
+                return (
+                  <div
+                    key={acesso.id}
+                    className="bg-gray-700 rounded-xl p-4 flex items-center justify-between"
+                  >
+                    <div className="flex items-center gap-4">
+                      <span className={`${tipoInfo.cor} text-white text-xs font-bold px-2 py-1 rounded`}>
+                        {tipoInfo.texto}
+                      </span>
+                      <div>
+                        {acesso.proprietario && (
+                          <div className="flex items-center gap-2">
+                            <User className="h-4 w-4 text-gray-400" />
+                            <span className="font-medium">{acesso.proprietario}</span>
+                          </div>
+                        )}
+                        {acesso.placa && (
+                          <div className="flex items-center gap-2 text-sm text-gray-400">
+                            <Car className="h-3 w-3" />
+                            <span className="font-mono">{acesso.placa}</span>
+                            {acesso.veiculo && <span>- {acesso.veiculo}</span>}
+                          </div>
+                        )}
+                        {acesso.observacao && !acesso.proprietario && (
+                          <p className="text-sm text-gray-400">{acesso.observacao}</p>
+                        )}
+                        {acesso.operador && (
+                          <p className="text-xs text-gray-500 mt-1">Operador: {acesso.operador}</p>
+                        )}
                       </div>
-                      <div className="flex items-center gap-2 text-sm text-gray-400">
-                        <User className="h-3 w-3" />
-                        <span>{acesso.proprietario || 'Nao identificado'}</span>
-                      </div>
-                      {acesso.veiculo && (
-                        <p className="text-xs text-gray-500 mt-1">{acesso.veiculo}</p>
-                      )}
+                    </div>
+
+                    <div className="text-right text-xs text-gray-400">
+                      {formatarData(acesso.criado_em)}
                     </div>
                   </div>
-
-                  <div className="text-right text-xs text-gray-400">
-                    {formatarData(acesso.criado_em)}
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>
 
         {/* Instrucoes */}
         <div className="bg-gray-800/50 rounded-xl p-4 text-xs text-gray-500 space-y-1">
-          <p><strong>Timer:</strong> Ao abrir, a cancela fecha automaticamente em {status.tempoRestante || 10}s</p>
+          <p><strong>Timer:</strong> Ao abrir, a cancela fecha automaticamente em 10s</p>
           <p><strong>Sensor:</strong> Quando um carro passa, o timer eh resetado</p>
           <p><strong>Modo Definitivo:</strong> Cancela fica aberta sem timer (para eventos especiais)</p>
         </div>

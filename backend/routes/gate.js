@@ -3,232 +3,306 @@ const router = express.Router();
 const db = require('../database');
 const { autenticar, autenticarPortaria } = require('./middleware');
 
-// === ESTADO DA CANCELA ===
-let statusCancela = {
-  aberta: false,
-  ultimaOperacao: null,
-  motivo: null,
-  modoDefinitivo: false,
-  timerAtivo: false,
-  tempoRestante: 0,
-  sensorCarro: false,
-  operador: null
-};
+// === ESTADO POR LOCAL ===
+// Cada local tem seu proprio estado de cancela
+const estadosLocais = {};
+
+function obterEstado(localId = 1) {
+  if (!estadosLocais[localId]) {
+    estadosLocais[localId] = {
+      localId,
+      aberta: false,
+      ultimaOperacao: null,
+      motivo: null,
+      modoDefinitivo: false,
+      timerAtivo: false,
+      tempoRestante: 0,
+      sensorCarro: false,
+      operador: null,
+      nomeLocal: null
+    };
+  }
+  return estadosLocais[localId];
+}
 
 // Configuracoes do timer
 const TEMPORIZADOR_SEGUNDOS = 10;
-let timerCancela = null;
-let tempoInicioTimer = null;
+const timersLocais = {};
 
 // === FUNCOES AUXILIARES ===
 
-function iniciarTimer() {
-  if (timerCancela) {
-    clearInterval(timerCancela);
+function iniciarTimer(localId = 1) {
+  const estado = obterEstado(localId);
+
+  if (timersLocais[localId]) {
+    clearInterval(timersLocais[localId]);
   }
 
-  tempoInicioTimer = Date.now();
-  statusCancela.timerAtivo = true;
-  statusCancela.tempoRestante = TEMPORIZADOR_SEGUNDOS;
+  const tempoInicio = Date.now();
+  estado.timerAtivo = true;
+  estado.tempoRestante = TEMPORIZADOR_SEGUNDOS;
 
-  console.log(`Timer iniciado: ${TEMPORIZADOR_SEGUNDOS}s`);
+  console.log(`Timer iniciado para local ${localId}: ${TEMPORIZADOR_SEGUNDOS}s`);
 
-  timerCancela = setInterval(() => {
-    const elapsed = Math.floor((Date.now() - tempoInicioTimer) / 1000);
-    statusCancela.tempoRestante = Math.max(0, TEMPORIZADOR_SEGUNDOS - elapsed);
+  timersLocais[localId] = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - tempoInicio) / 1000);
+    estado.tempoRestante = Math.max(0, TEMPORIZADOR_SEGUNDOS - elapsed);
 
-    if (statusCancela.tempoRestante <= 0) {
-      clearInterval(timerCancela);
-      timerCancela = null;
-      statusCancela.timerAtivo = false;
+    if (estado.tempoRestante <= 0) {
+      clearInterval(timersLocais[localId]);
+      timersLocais[localId] = null;
+      estado.timerAtivo = false;
 
-      if (!statusCancela.modoDefinitivo && statusCancela.aberta) {
-        statusCancela.aberta = false;
-        statusCancela.motivo = 'Timer expirado';
+      if (!estado.modoDefinitivo && estado.aberta) {
+        estado.aberta = false;
+        estado.motivo = 'Fechamento Automatico';
 
         db.run(
-          'INSERT INTO logs (tag_codigo, tipo, dispositivo, observacao) VALUES (?, ?, ?, ?)',
-          ['TIMER', 'SAIDA', 'SISTEMA', 'Fechamento automatico - Timer expirado']
+          'INSERT INTO logs (tag_codigo, tipo, dispositivo, local_id, operador, observacao) VALUES (?, ?, ?, ?, ?, ?)',
+          ['TIMER', 'FECHAMENTO_AUTOMATICO', 'SISTEMA', localId, 'Sistema', `Timer expirado - ${estado.nomeLocal || 'Local ' + localId}`]
         );
 
-        console.log('Cancela FECHADA automaticamente - Timer expirado');
+        console.log(`Cancela FECHADA automaticamente - Local ${localId} - Timer expirado`);
       }
     }
   }, 1000);
 }
 
-function pararTimer() {
-  if (timerCancela) {
-    clearInterval(timerCancela);
-    timerCancela = null;
+function pararTimer(localId = 1) {
+  if (timersLocais[localId]) {
+    clearInterval(timersLocais[localId]);
+    timersLocais[localId] = null;
   }
-  statusCancela.timerAtivo = false;
-  statusCancela.tempoRestante = 0;
+  const estado = obterEstado(localId);
+  estado.timerAtivo = false;
+  estado.tempoRestante = 0;
 }
 
-function resetarTimer() {
-  if (statusCancela.aberta && !statusCancela.modoDefinitivo) {
-    console.log('Timer resetado - Sensor de carro detectou veiculo');
-    tempoInicioTimer = Date.now();
-    statusCancela.tempoRestante = TEMPORIZADOR_SEGUNDOS;
+function resetarTimer(localId = 1) {
+  const estado = obterEstado(localId);
+  if (estado.aberta && !estado.modoDefinitivo) {
+    console.log(`Timer resetado - Local ${localId} - Sensor de carro`);
+    // Reiniciar timer
+    iniciarTimer(localId);
   }
+}
+
+// Buscar nome do local
+function buscarNomeLocal(localId, callback) {
+  if (!localId) return callback('N/A');
+  db.get('SELECT nome FROM locais WHERE id = ?', [localId], (err, local) => {
+    callback(local?.nome || `Local ${localId}`);
+  });
 }
 
 // === ROTAS DO DASHBOARD (com autenticacao admin) ===
 
+// Status de todos os locais
+router.get('/status-geral', autenticar, (req, res) => {
+  db.all('SELECT id, nome FROM locais WHERE ativo = 1', (err, locais) => {
+    if (err) locais = [];
+    const statusLocais = locais.map(l => obterEstado(l.id));
+    res.json(statusLocais);
+  });
+});
+
 // Abrir cancela manualmente (pelo dashboard)
 router.post('/abrir', autenticar, (req, res) => {
-  const { motivo } = req.body;
+  const { motivo, localId } = req.body;
+  const local_id = localId || 1;
+  const estado = obterEstado(local_id);
 
-  statusCancela.aberta = true;
-  statusCancela.ultimaOperacao = new Date().toISOString();
-  statusCancela.motivo = motivo || 'Manual';
-  statusCancela.modoDefinitivo = false;
-  statusCancela.operador = req.usuario?.nome || 'Admin';
+  estado.aberta = true;
+  estado.ultimaOperacao = new Date().toISOString();
+  estado.motivo = motivo || 'Manual';
+  estado.modoDefinitivo = false;
+  estado.operador = req.usuario?.nome || 'Admin';
 
-  iniciarTimer();
+  iniciarTimer(local_id);
 
-  db.run(
-    'INSERT INTO logs (tag_codigo, tipo, dispositivo, observacao) VALUES (?, ?, ?, ?)',
-    ['MANUAL', 'ENTRADA', 'DASHBOARD', `Abertura manual: ${motivo || 'Sem motivo'}`]
-  );
+  buscarNomeLocal(local_id, (nomeLocal) => {
+    estado.nomeLocal = nomeLocal;
 
-  console.log(`Cancela ABERTA - Motivo: ${motivo || 'Manual'}`);
+    db.run(
+      'INSERT INTO logs (tag_codigo, tipo, dispositivo, local_id, operador, observacao) VALUES (?, ?, ?, ?, ?, ?)',
+      ['MANUAL', 'ABERTURA', 'DASHBOARD', local_id, estado.operador, `Abertura manual: ${motivo || 'Sem motivo'} - ${nomeLocal}`]
+    );
 
-  res.json({
-    status: 'aberta',
-    timerAtivo: true,
-    tempoRestante: TEMPORIZADOR_SEGUNDOS,
-    mensagem: 'Cancela aberta com sucesso'
+    console.log(`Cancela ABERTA - Local: ${nomeLocal} - Motivo: ${motivo || 'Manual'}`);
+
+    res.json({
+      status: 'aberta',
+      timerAtivo: true,
+      tempoRestante: TEMPORIZADOR_SEGUNDOS,
+      mensagem: 'Cancela aberta com sucesso'
+    });
   });
 });
 
 // Fechar cancela
 router.post('/fechar', autenticar, (req, res) => {
-  statusCancela.aberta = false;
-  statusCancela.ultimaOperacao = new Date().toISOString();
-  statusCancela.motivo = 'Fechamento manual';
-  statusCancela.modoDefinitivo = false;
-  statusCancela.operador = req.usuario?.nome || 'Admin';
+  const { localId } = req.body;
+  const local_id = localId || 1;
+  const estado = obterEstado(local_id);
 
-  pararTimer();
+  estado.aberta = false;
+  estado.ultimaOperacao = new Date().toISOString();
+  estado.motivo = 'Fechamento Manual';
+  estado.modoDefinitivo = false;
+  estado.operador = req.usuario?.nome || 'Admin';
 
-  db.run(
-    'INSERT INTO logs (tag_codigo, tipo, dispositivo, observacao) VALUES (?, ?, ?, ?)',
-    ['MANUAL', 'SAIDA', 'DASHBOARD', 'Fechamento manual']
-  );
+  pararTimer(local_id);
 
-  console.log('Cancela FECHADA');
+  buscarNomeLocal(local_id, (nomeLocal) => {
+    estado.nomeLocal = nomeLocal;
 
-  res.json({
-    status: 'fechada',
-    mensagem: 'Cancela fechada com sucesso'
+    db.run(
+      'INSERT INTO logs (tag_codigo, tipo, dispositivo, local_id, operador, observacao) VALUES (?, ?, ?, ?, ?, ?)',
+      ['MANUAL', 'FECHAMENTO', 'DASHBOARD', local_id, estado.operador, `Fechamento manual - ${nomeLocal}`]
+    );
+
+    console.log(`Cancela FECHADA - Local: ${nomeLocal}`);
+
+    res.json({
+      status: 'fechada',
+      mensagem: 'Cancela fechada com sucesso'
+    });
   });
 });
 
-// Status atual da cancela
+// Status de um local especifico
+router.get('/status/:localId', autenticar, (req, res) => {
+  const localId = parseInt(req.params.localId) || 1;
+  res.json(obterEstado(localId));
+});
+
+// Status atual da cancela (compatibilidade)
 router.get('/status', autenticar, (req, res) => {
-  res.json(statusCancela);
+  res.json(obterEstado(1));
 });
 
 // === ROTAS DA PORTARIA (com autenticacao de operador) ===
 
 // Status da cancela (portaria autenticada)
 router.get('/portaria/status', autenticarPortaria, (req, res) => {
-  res.json(statusCancela);
+  const localId = req.usuario?.local_id || 1;
+  const estado = obterEstado(localId);
+  res.json(estado);
 });
 
 // Abrir cancela (portaria)
 router.post('/portaria/abrir', autenticarPortaria, (req, res) => {
   const { motivo } = req.body;
+  const localId = req.usuario?.local_id || 1;
+  const estado = obterEstado(localId);
 
-  statusCancela.aberta = true;
-  statusCancela.ultimaOperacao = new Date().toISOString();
-  statusCancela.motivo = motivo || 'Portaria';
-  statusCancela.modoDefinitivo = false;
-  statusCancela.operador = req.usuario?.nome || 'Operador';
+  estado.aberta = true;
+  estado.ultimaOperacao = new Date().toISOString();
+  estado.motivo = motivo || 'Abertura Manual';
+  estado.modoDefinitivo = false;
+  estado.operador = req.usuario?.nome || 'Operador';
 
-  iniciarTimer();
+  iniciarTimer(localId);
 
-  db.run(
-    'INSERT INTO logs (tag_codigo, tipo, dispositivo, observacao) VALUES (?, ?, ?, ?)',
-    ['MANUAL', 'ENTRADA', 'PORTARIA', `Abertura: ${motivo || 'Portaria'} - Op: ${req.usuario?.nome}`]
-  );
+  buscarNomeLocal(localId, (nomeLocal) => {
+    estado.nomeLocal = nomeLocal;
 
-  console.log(`Cancela ABERTA pela Portaria - Operador: ${req.usuario?.nome}`);
+    db.run(
+      'INSERT INTO logs (tag_codigo, tipo, dispositivo, local_id, operador, observacao) VALUES (?, ?, ?, ?, ?, ?)',
+      ['MANUAL', 'ABERTURA', 'PORTARIA', localId, estado.operador, `Abertura manual - ${nomeLocal}`]
+    );
 
-  res.json({
-    status: 'aberta',
-    timerAtivo: true,
-    tempoRestante: TEMPORIZADOR_SEGUNDOS
+    console.log(`Cancela ABERTA pela Portaria - Operador: ${estado.operador} - Local: ${nomeLocal}`);
+
+    res.json({
+      status: 'aberta',
+      timerAtivo: true,
+      tempoRestante: TEMPORIZADOR_SEGUNDOS
+    });
   });
 });
 
 // Fechar cancela (portaria)
 router.post('/portaria/fechar', autenticarPortaria, (req, res) => {
-  statusCancela.aberta = false;
-  statusCancela.ultimaOperacao = new Date().toISOString();
-  statusCancela.motivo = 'Portaria';
-  statusCancela.modoDefinitivo = false;
-  statusCancela.operador = req.usuario?.nome || 'Operador';
+  const localId = req.usuario?.local_id || 1;
+  const estado = obterEstado(localId);
 
-  pararTimer();
+  estado.aberta = false;
+  estado.ultimaOperacao = new Date().toISOString();
+  estado.motivo = 'Fechamento Manual';
+  estado.modoDefinitivo = false;
+  estado.operador = req.usuario?.nome || 'Operador';
 
-  db.run(
-    'INSERT INTO logs (tag_codigo, tipo, dispositivo, observacao) VALUES (?, ?, ?, ?)',
-    ['MANUAL', 'SAIDA', 'PORTARIA', `Fechamento manual - Op: ${req.usuario?.nome}`]
-  );
+  pararTimer(localId);
 
-  console.log(`Cancela FECHADA pela Portaria - Operador: ${req.usuario?.nome}`);
+  buscarNomeLocal(localId, (nomeLocal) => {
+    estado.nomeLocal = nomeLocal;
 
-  res.json({ status: 'fechada' });
+    db.run(
+      'INSERT INTO logs (tag_codigo, tipo, dispositivo, local_id, operador, observacao) VALUES (?, ?, ?, ?, ?, ?)',
+      ['MANUAL', 'FECHAMENTO', 'PORTARIA', localId, estado.operador, `Fechamento manual - ${nomeLocal}`]
+    );
+
+    console.log(`Cancela FECHADA pela Portaria - Operador: ${estado.operador} - Local: ${nomeLocal}`);
+
+    res.json({ status: 'fechada' });
+  });
 });
 
 // Modo definitivo (portaria)
 router.post('/portaria/definitivo', autenticarPortaria, (req, res) => {
   const { ativar } = req.body;
+  const localId = req.usuario?.local_id || 1;
+  const estado = obterEstado(localId);
 
-  statusCancela.modoDefinitivo = ativar;
+  estado.modoDefinitivo = ativar;
 
-  if (ativar) {
-    statusCancela.aberta = true;
-    statusCancela.motivo = 'Abertura Definitiva';
-    statusCancela.ultimaOperacao = new Date().toISOString();
-    statusCancela.operador = req.usuario?.nome || 'Operador';
-    pararTimer();
+  buscarNomeLocal(localId, (nomeLocal) => {
+    estado.nomeLocal = nomeLocal;
 
-    db.run(
-      'INSERT INTO logs (tag_codigo, tipo, dispositivo, observacao) VALUES (?, ?, ?, ?)',
-      ['MANUAL', 'ENTRADA', 'PORTARIA', `Ativado modo Definitivo - Op: ${req.usuario?.nome}`]
-    );
+    if (ativar) {
+      estado.aberta = true;
+      estado.motivo = 'Abertura Definitiva';
+      estado.ultimaOperacao = new Date().toISOString();
+      estado.operador = req.usuario?.nome || 'Operador';
+      pararTimer(localId);
 
-    console.log(`Modo ABERTURA DEFINITIVA ativado - Operador: ${req.usuario?.nome}`);
-  } else {
-    statusCancela.motivo = null;
-    statusCancela.ultimaOperacao = new Date().toISOString();
-    statusCancela.operador = req.usuario?.nome || 'Operador';
+      db.run(
+        'INSERT INTO logs (tag_codigo, tipo, dispositivo, local_id, operador, observacao) VALUES (?, ?, ?, ?, ?, ?)',
+        ['MANUAL', 'ABERTURA_DEFINITIVA', 'PORTARIA', localId, estado.operador, `Ativado modo Definitivo - ${nomeLocal}`]
+      );
 
-    db.run(
-      'INSERT INTO logs (tag_codigo, tipo, dispositivo, observacao) VALUES (?, ?, ?, ?)',
-      ['MANUAL', 'SAIDA', 'PORTARIA', `Desativado modo Definitivo - Op: ${req.usuario?.nome}`]
-    );
+      console.log(`Modo ABERTURA DEFINITIVA ativado - Operador: ${estado.operador} - Local: ${nomeLocal}`);
+    } else {
+      estado.motivo = null;
+      estado.ultimaOperacao = new Date().toISOString();
+      estado.operador = req.usuario?.nome || 'Operador';
 
-    console.log(`Modo ABERTURA DEFINITIVA desativado - Operador: ${req.usuario?.nome}`);
-  }
+      db.run(
+        'INSERT INTO logs (tag_codigo, tipo, dispositivo, local_id, operador, observacao) VALUES (?, ?, ?, ?, ?, ?)',
+        ['MANUAL', 'DESATIVAR_DEFINITIVO', 'PORTARIA', localId, estado.operador, `Desativado modo Definitivo - ${nomeLocal}`]
+      );
 
-  res.json({
-    modoDefinitivo: statusCancela.modoDefinitivo,
-    aberta: statusCancela.aberta
+      console.log(`Modo ABERTURA DEFINITIVA desativado - Operador: ${estado.operador} - Local: ${nomeLocal}`);
+    }
+
+    res.json({
+      modoDefinitivo: estado.modoDefinitivo,
+      aberta: estado.aberta
+    });
   });
 });
 
 // Sensor de carro (portaria)
 router.post('/portaria/sensor-carro', autenticarPortaria, (req, res) => {
-  statusCancela.sensorCarro = true;
-  resetarTimer();
+  const localId = req.usuario?.local_id || 1;
+  const estado = obterEstado(localId);
+
+  estado.sensorCarro = true;
+  resetarTimer(localId);
 
   setTimeout(() => {
-    statusCancela.sensorCarro = false;
+    estado.sensorCarro = false;
   }, 2000);
 
   res.json({ ok: true });
@@ -239,7 +313,8 @@ router.post('/portaria/sensor-carro', autenticarPortaria, (req, res) => {
 // Verificar tag e abrir se autorizado
 router.post('/verificar-e-abrir', (req, res) => {
   const apiKey = req.headers['x-api-key'];
-  const { tag_codigo, dispositivo } = req.body;
+  const { tag_codigo, dispositivo, localId } = req.body;
+  const local_id = localId || 1;
 
   if (apiKey !== process.env.DEVICE_API_KEY) {
     return res.status(403).json({ erro: 'API key invalida' });
@@ -255,39 +330,46 @@ router.post('/verificar-e-abrir', (req, res) => {
     }
 
     const autorizado = !!tag;
+    const estado = obterEstado(local_id);
 
-    db.run(
-      'INSERT INTO logs (tag_codigo, tipo, dispositivo, observacao) VALUES (?, ?, ?, ?)',
-      [
-        tag_codigo,
-        autorizado ? 'ENTRADA' : 'NEGADO',
-        dispositivo || 'ESP32-01',
-        autorizado ? `Acesso liberado - ${tag.proprietario}` : 'Tag nao autorizada'
-      ]
-    );
+    buscarNomeLocal(local_id, (nomeLocal) => {
+      estado.nomeLocal = nomeLocal;
 
-    if (autorizado) {
-      if (!statusCancela.modoDefinitivo) {
-        statusCancela.aberta = true;
-        statusCancela.ultimaOperacao = new Date().toISOString();
-        statusCancela.motivo = `RFID: ${tag.proprietario}`;
-        statusCancela.operador = 'RFID';
+      db.run(
+        'INSERT INTO logs (tag_codigo, tipo, dispositivo, local_id, operador, observacao) VALUES (?, ?, ?, ?, ?, ?)',
+        [
+          tag_codigo,
+          autorizado ? 'ABERTURA_RFID' : 'ACESSO_NEGADO',
+          dispositivo || 'ESP32-01',
+          local_id,
+          'RFID',
+          autorizado ? `Acesso liberado - ${tag.proprietario} - ${nomeLocal}` : `Acesso negado - Tag: ${tag_codigo} - ${nomeLocal}`
+        ]
+      );
 
-        iniciarTimer();
+      if (autorizado) {
+        if (!estado.modoDefinitivo) {
+          estado.aberta = true;
+          estado.ultimaOperacao = new Date().toISOString();
+          estado.motivo = `RFID: ${tag.proprietario}`;
+          estado.operador = 'RFID';
+
+          iniciarTimer(local_id);
+        }
+
+        console.log(`Cancela ABERTA via RFID - Tag: ${tag_codigo} - ${tag.proprietario} - Local: ${nomeLocal}`);
+      } else {
+        console.log(`Acesso NEGADO - Tag: ${tag_codigo} - Local: ${nomeLocal}`);
       }
 
-      console.log(`Cancela ABERTA via RFID - Tag: ${tag_codigo} - ${tag.proprietario}`);
-    } else {
-      console.log(`Acesso NEGADO - Tag: ${tag_codigo}`);
-    }
-
-    res.json({
-      autorizado,
-      abrir_cancela: autorizado,
-      modoDefinitivo: statusCancela.modoDefinitivo,
-      proprietario: tag?.proprietario || null,
-      veiculo: tag?.veiculo || null,
-      placa: tag?.placa || null
+      res.json({
+        autorizado,
+        abrir_cancela: autorizado,
+        modoDefinitivo: estado.modoDefinitivo,
+        proprietario: tag?.proprietario || null,
+        veiculo: tag?.veiculo || null,
+        placa: tag?.placa || null
+      });
     });
   });
 });
@@ -295,16 +377,19 @@ router.post('/verificar-e-abrir', (req, res) => {
 // Sensor de carro do ESP32
 router.post('/sensor-carro', (req, res) => {
   const apiKey = req.headers['x-api-key'];
+  const { localId } = req.body;
+  const local_id = localId || 1;
 
   if (apiKey !== process.env.DEVICE_API_KEY) {
     return res.status(403).json({ erro: 'API key invalida' });
   }
 
-  statusCancela.sensorCarro = true;
-  resetarTimer();
+  const estado = obterEstado(local_id);
+  estado.sensorCarro = true;
+  resetarTimer(local_id);
 
   setTimeout(() => {
-    statusCancela.sensorCarro = false;
+    estado.sensorCarro = false;
   }, 2000);
 
   res.json({ ok: true });

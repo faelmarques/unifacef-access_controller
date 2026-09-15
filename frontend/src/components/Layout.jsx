@@ -5,6 +5,7 @@ import {
   CreditCard,
   ScrollText,
   DoorOpen,
+  MapPin,
   Wifi,
   Users,
   LogOut,
@@ -17,6 +18,7 @@ const menuItems = [
   { path: '/tags', label: 'Tags RFID', icon: CreditCard },
   { path: '/logs', label: 'Historico', icon: ScrollText },
   { path: '/controle', label: 'Controle Cancela', icon: DoorOpen },
+  { path: '/locais', label: 'Locais', icon: MapPin },
   { path: '/dispositivos', label: 'Dispositivos', icon: Wifi },
   { path: '/operadores', label: 'Operadores Portaria', icon: Users },
 ]

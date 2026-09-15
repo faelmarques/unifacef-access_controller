@@ -7,7 +7,9 @@ import {
   XCircle,
   Download,
   Loader2,
-  Calendar
+  Calendar,
+  MapPin,
+  User
 } from 'lucide-react'
 import { buscarLogs } from '../api/api'
 import toast from 'react-hot-toast'
@@ -22,25 +24,27 @@ function formatarData(data) {
   })
 }
 
+function traduzirTipo(tipo) {
+  const traducoes = {
+    ABERTURA: { texto: 'Abertura Manual', cor: 'bg-green-100 text-green-700', icone: LogIn },
+    ABERTURA_RFID: { texto: 'Abertura RFID', cor: 'bg-blue-100 text-blue-700', icone: LogIn },
+    FECHAMENTO: { texto: 'Fechamento Manual', cor: 'bg-red-100 text-red-700', icone: LogOut },
+    FECHAMENTO_AUTOMATICO: { texto: 'Fechamento Auto', cor: 'bg-orange-100 text-orange-700', icone: LogOut },
+    ABERTURA_DEFINITIVA: { texto: 'Modo Definitivo', cor: 'bg-purple-100 text-purple-700', icone: LogIn },
+    DESATIVAR_DEFINITIVO: { texto: 'Desativar Definitivo', cor: 'bg-gray-100 text-gray-700', icone: LogOut },
+    ACESSO_NEGADO: { texto: 'Acesso Negado', cor: 'bg-red-100 text-red-700', icone: XCircle }
+  }
+  return traducoes[tipo] || { texto: tipo, cor: 'bg-gray-100 text-gray-700', icone: XCircle }
+}
+
 function BadgeTipo({ tipo }) {
-  const estilos = {
-    ENTRADA: 'bg-green-100 text-green-700',
-    SAIDA: 'bg-blue-100 text-blue-700',
-    NEGADO: 'bg-red-100 text-red-700'
-  }
-
-  const icones = {
-    ENTRADA: LogIn,
-    SAIDA: LogOut,
-    NEGADO: XCircle
-  }
-
-  const Icon = icones[tipo] || XCircle
+  const info = traduzirTipo(tipo)
+  const Icon = info.icone
 
   return (
-    <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full ${estilos[tipo] || 'bg-gray-100 text-gray-700'}`}>
+    <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full ${info.cor}`}>
       <Icon className="h-3 w-3" />
-      {tipo}
+      {info.texto}
     </span>
   )
 }
@@ -90,13 +94,15 @@ export default function Logs() {
       return
     }
 
-    const headers = ['Data/Hora', 'Tag', 'Proprietario', 'Placa', 'Tipo', 'Dispositivo', 'Observacao']
+    const headers = ['Data/Hora', 'Tag', 'Proprietario', 'Placa', 'Tipo', 'Operador', 'Local', 'Dispositivo', 'Observacao']
     const rows = logs.map(log => [
       formatarData(log.criado_em),
       log.tag_codigo,
       log.proprietario || '',
       log.placa || '',
-      log.tipo,
+      traduzirTipo(log.tipo).texto,
+      log.operador || '',
+      log.nome_local || '',
       log.dispositivo || '',
       log.observacao || ''
     ])
@@ -117,7 +123,7 @@ export default function Logs() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Historico de Acessos</h1>
-          <p className="text-gray-500">Consulte todos os registros de entrada e saida</p>
+          <p className="text-gray-500">Consulte todos os registros de operacoes da cancela</p>
         </div>
         <button onClick={exportarCSV} className="btn-secondary">
           <Download className="h-5 w-5" />
@@ -155,9 +161,12 @@ export default function Logs() {
               onChange={(e) => setFiltros({ ...filtros, tipo: e.target.value })}
             >
               <option value="">Todos</option>
-              <option value="ENTRADA">Entradas</option>
-              <option value="SAIDA">Saidas</option>
-              <option value="NEGADO">Negados</option>
+              <option value="ABERTURA">Aberturas Manuais</option>
+              <option value="ABERTURA_RFID">Aberturas RFID</option>
+              <option value="FECHAMENTO">Fechamentos Manuais</option>
+              <option value="FECHAMENTO_AUTOMATICO">Fechamentos Automaticos</option>
+              <option value="ABERTURA_DEFINITIVA">Modo Definitivo</option>
+              <option value="ACESSO_NEGADO">Acessos Negados</option>
             </select>
           </div>
 
@@ -200,11 +209,11 @@ export default function Logs() {
               <thead>
                 <tr className="border-b border-gray-100">
                   <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Data/Hora</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Tag</th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Tipo</th>
                   <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Proprietario</th>
                   <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Placa</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Tipo</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Dispositivo</th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Operador</th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Local</th>
                   <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Observacao</th>
                 </tr>
               </thead>
@@ -214,13 +223,27 @@ export default function Logs() {
                     <td className="py-3 px-4 text-sm text-gray-600">
                       {formatarData(log.criado_em)}
                     </td>
-                    <td className="py-3 px-4 font-mono text-sm">{log.tag_codigo}</td>
-                    <td className="py-3 px-4">{log.proprietario || '-'}</td>
-                    <td className="py-3 px-4 font-mono text-sm">{log.placa || '-'}</td>
                     <td className="py-3 px-4">
                       <BadgeTipo tipo={log.tipo} />
                     </td>
-                    <td className="py-3 px-4 text-sm text-gray-600">{log.dispositivo || '-'}</td>
+                    <td className="py-3 px-4">
+                      {log.proprietario ? (
+                        <div className="flex items-center gap-1">
+                          <User className="h-3 w-3 text-gray-400" />
+                          <span>{log.proprietario}</span>
+                        </div>
+                      ) : '-'}
+                    </td>
+                    <td className="py-3 px-4 font-mono text-sm">{log.placa || '-'}</td>
+                    <td className="py-3 px-4 text-sm text-gray-600">{log.operador || '-'}</td>
+                    <td className="py-3 px-4">
+                      {log.nome_local ? (
+                        <div className="flex items-center gap-1 text-sm">
+                          <MapPin className="h-3 w-3 text-gray-400" />
+                          <span>{log.nome_local}</span>
+                        </div>
+                      ) : '-'}
+                    </td>
                     <td className="py-3 px-4 text-sm text-gray-500 max-w-[200px] truncate">
                       {log.observacao || '-'}
                     </td>
